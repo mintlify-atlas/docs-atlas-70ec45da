@@ -1,0 +1,293 @@
+---
+title: 'Store methods'
+description: 'Complete reference for all methods on the Store<T> object returned by createStore.'
+keywords: ['store', 'getState', 'setState', 'subscribe', 'resetState', 'destroy', 'getServerState']
+---
+
+The `Store<T>` interface is returned by [`createStore`](/api/create-store). In production and development environments the store object is frozen — middleware in the `use` option is the only supported mechanism for extending it.
+
+## Interface definition
+
+```typescript
+export interface Store<T = State> {
+  $$store: symbol
+  getState: () => T
+  setState: (fn: (state: T) => Partial<T>, force?: boolean) => void
+  subscribe: {
+    <U>(subscriber: Subscriber<T, U>, selector?: (state: T) => U): () => boolean
+  }
+  getServerState: () => T
+  // Added by resetState / destroy at creation time (not in interface, present on returned object):
+  resetState: (state?: unknown | null) => void
+  destroy: () => void
+  // Optionally added by persist middleware:
+  persist?: StoreWithPersist
+}
+```
+
+<Note>
+  `$$store` is an internal symbol used to validate that a value is a genuine Killa store (e.g., inside `useStore` and `persist`). Do not use or overwrite it.
+</Note>
+
+---
+
+## `getState()`
+
+Returns a deep clone of the current state.
+
+```typescript
+getState(): T
+```
+
+<ResponseField name="return value" type="T">
+  A deep clone of the current state produced by `just-clone`. Mutations to the returned object do not affect the store's internal state.
+</ResponseField>
+
+### Example
+
+```typescript
+const store = createStore({ count: 0, user: { name: 'Alice' } })
+
+const state = store.getState()
+console.log(state.count) // 0
+
+// Mutating the snapshot does not affect the store
+state.count = 99
+console.log(store.getState().count) // still 0
+```
+
+---
+
+## `setState(fn, force?)`
+
+Updates the store state and notifies subscribers.
+
+```typescript
+setState(fn: (state: T) => Partial<T>, force?: boolean): void
+```
+
+<ParamField path="fn" type="(state: T) => Partial<T>" required>
+  A function that receives a deep-cloned snapshot of the current state and returns an object with the fields to update. Only the returned keys are merged into state — unmentioned keys are preserved.
+
+  Returning an empty object or falsy value results in no state change.
+</ParamField>
+
+<ParamField path="force" type="boolean" default="false">
+  When `true`, the merge strategy changes from `Object.assign(getState(), clone(newState))` to `Object.assign(newState)` — meaning only the keys returned by `fn` exist in the new state. Use this to fully replace state rather than patch it.
+</ParamField>
+
+### Merge vs. force replace
+
+```typescript
+const store = createStore({ a: 1, b: 2, c: 3 })
+
+// Default merge — unmentioned keys are preserved
+store.setState(() => ({ a: 10 }))
+store.getState() // { a: 10, b: 2, c: 3 }
+
+// Force replace — only returned keys survive
+store.setState(() => ({ a: 99 }), true)
+store.getState() // { a: 99 }  (b and c are gone)
+```
+
+<Warning>
+  Passing `force: true` permanently removes any keys not included in the returned object. This is rarely what you want for partial updates.
+</Warning>
+
+### Subscriber notification
+
+Subscribers are notified only when `compare(prevState, newState)` returns `false` (i.e., the state actually changed). The default comparator is `deepEquals`.
+
+---
+
+## `subscribe(subscriber, selector?)`
+
+Registers a subscriber function that is called whenever relevant state changes.
+
+```typescript
+subscribe<U>(
+  subscriber: Subscriber<T, U>,
+  selector?: (state: T) => U
+): () => boolean
+```
+
+<ParamField path="subscriber" type="Subscriber<T, U>" required>
+  A callback invoked with `(newState: T, prevState: T)` after each state change.
+
+  When a `selector` is provided, the callback is only invoked when the selected slice changes (compared with `deepEquals`).
+</ParamField>
+
+<ParamField path="selector" type="(state: T) => U">
+  An optional selector function. When provided, the subscriber is only notified when the value returned by `selector(state)` changes between updates.
+
+  Enables fine-grained subscriptions that avoid unnecessary re-runs.
+</ParamField>
+
+<ResponseField name="return value" type="() => boolean">
+  An unsubscribe function. Call it to remove the subscriber from the store. Returns `true` if the subscriber was present and removed, `false` if it was not found.
+</ResponseField>
+
+### The `Subscriber<T, U>` type
+
+```typescript
+export interface Subscriber<T, U = unknown> {
+  (state: T, prevState: T): void
+  $$subscriber?: symbol   // Set internally when a selector is provided
+  $$selectorState?: U     // Cached selector result for comparison
+  $$selector?: Selector<T, U> // The selector function
+}
+```
+
+The `$$subscriber`, `$$selectorState`, and `$$selector` fields are set by `subscribe` itself when a selector is passed. Do not set them manually.
+
+### Examples
+
+```typescript
+const store = createStore({ count: 0, name: 'Alice' })
+
+// Full-state subscription
+const unsubscribe = store.subscribe((state, prevState) => {
+  console.log('count changed from', prevState.count, 'to', state.count)
+})
+
+// Selector-based subscription — only fires when `count` changes
+const unsubscribeCount = store.subscribe(
+  (state) => console.log('count is now', state.count),
+  (state) => state.count
+)
+
+// Unsubscribe when done
+unsubscribe()
+unsubscribeCount()
+```
+
+---
+
+## `getServerState()`
+
+Returns the original `initialState` value passed to `createStore`.
+
+```typescript
+getServerState(): T
+```
+
+<ResponseField name="return value" type="T">
+  The resolved initial state — exactly what was passed as the `initializer` argument (or returned by the initializer function). This value is never mutated by `setState` calls.
+</ResponseField>
+
+<Info>
+  Used internally by `useStore` for server-side rendering (SSR) via `useSyncExternalStoreWithSelector`. It provides React with a stable server snapshot that avoids hydration mismatches.
+</Info>
+
+### Example
+
+```typescript
+const store = createStore({ count: 0 })
+
+store.setState(() => ({ count: 42 }))
+
+store.getState()       // { count: 42 }
+store.getServerState() // { count: 0 } — always the original
+```
+
+---
+
+## `resetState(state?)`
+
+Resets the store back to its initial state, or overwrites it with a new state.
+
+```typescript
+resetState(state?: unknown | null): void
+```
+
+<ParamField path="state" type="unknown | null" default="null">
+  - When omitted or `null`: resets to the original `initialState` (deep clone).
+  - When a plain object is provided: replaces the current state with that object (using `force: true` internally).
+
+  Non-object values are ignored and fall back to `initialState`.
+</ParamField>
+
+### Example
+
+```typescript
+const store = createStore({ count: 0, name: 'Alice' })
+
+store.setState(() => ({ count: 99, name: 'Bob' }))
+store.getState() // { count: 99, name: 'Bob' }
+
+// Reset to initial
+store.resetState()
+store.getState() // { count: 0, name: 'Alice' }
+
+// Overwrite with a new state
+store.resetState({ count: 5, name: 'Charlie' })
+store.getState() // { count: 5, name: 'Charlie' }
+```
+
+---
+
+## `destroy()`
+
+Removes all subscribers from the store.
+
+```typescript
+destroy(): void
+```
+
+Clears the internal `Set<Subscriber>`. After calling `destroy()`, no further subscriber callbacks will fire for state changes. The store itself remains functional — you can still call `getState` and `setState`.
+
+<Tip>
+  Call `destroy()` during teardown in tests or when unmounting a long-lived singleton to prevent memory leaks from accumulated subscribers.
+</Tip>
+
+### Example
+
+```typescript
+const store = createStore({ count: 0 })
+
+const unsub = store.subscribe((s) => console.log(s.count))
+
+store.setState(() => ({ count: 1 })) // logs 1
+
+store.destroy()
+
+store.setState(() => ({ count: 2 })) // no log — all subscribers cleared
+```
+
+---
+
+## `store.persist` (optional)
+
+Present only when the [`persist`](/api/persist) middleware has been applied via `options.use`. Its type is `StoreWithPersist`:
+
+```typescript
+interface StoreWithPersist {
+  $$persist: symbol
+  name: string
+  destroy: () => void
+  rehydrate: () => void
+  hydrated: () => boolean
+}
+```
+
+<ResponseField name="$$persist" type="symbol">
+  Internal symbol identifying the persist attachment. Do not use directly.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The storage key name provided in `PersistConfig.name`.
+</ResponseField>
+
+<ResponseField name="destroy" type="() => void">
+  Removes the persisted entry from storage by calling `storage.removeItem(name)`.
+</ResponseField>
+
+<ResponseField name="rehydrate" type="() => void">
+  Re-reads the persisted value from storage and merges it into the current state. Useful after programmatic storage changes.
+</ResponseField>
+
+<ResponseField name="hydrated" type="() => boolean">
+  Returns `true` if the store has been hydrated from storage at least once since creation.
+</ResponseField>
+
+See the [`persist` reference](/api/persist) for full middleware documentation.

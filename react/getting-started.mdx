@@ -1,0 +1,173 @@
+---
+title: "Getting started with React"
+description: "Set up Killa in a React 18 project, create a shared store, and consume it in a component with useStore."
+keywords: ["killa", "react", "useStore", "createStore", "state management", "getting started"]
+---
+
+Killa works with React 18 and above. Stores are created outside the component tree — no Provider or context wrapper is needed. Any component can import a store and subscribe to it directly.
+
+## Installation
+
+Install Killa and its React peer dependencies:
+
+<CodeGroup>
+
+```bash npm
+npm install killa react react-dom use-sync-external-store
+```
+
+```bash yarn
+yarn add killa react react-dom use-sync-external-store
+```
+
+```bash pnpm
+pnpm add killa react react-dom use-sync-external-store
+```
+
+</CodeGroup>
+
+<Note>
+  `use-sync-external-store` is required by `killa/react`. It provides the `useSyncExternalStoreWithSelector` shim that ensures React 18 concurrent-mode safety.
+</Note>
+
+### Peer dependency versions
+
+| Package                    | Required version |
+| -------------------------- | ---------------- |
+| `react`                    | >= 18.0.0        |
+| `react-dom`                | >= 18.0.0        |
+| `use-sync-external-store`  | >= 1.2.0         |
+
+## Setting up a store
+
+Create the store in its own module so multiple components can import it:
+
+```typescript store.ts
+import { createStore } from 'killa'
+
+export const counterStore = createStore({ count: 0 })
+```
+
+Stores created with `createStore` are plain JavaScript objects — they have no React dependency. You can use the same store in vanilla scripts, tests, and React components alike.
+
+## Consuming the store in a component
+
+Import `useStore` from `killa/react` and pass it the store and a selector function. `useStore` returns a tuple of `[selectedState, setState]`.
+
+```jsx Counter.jsx
+import { useStore } from 'killa/react'
+import { counterStore } from './store'
+
+export function Counter() {
+  const [state, setState] = useStore(counterStore, (s) => ({
+    count: s.count
+  }))
+
+  const increment = () => {
+    setState((s) => ({ ...s, count: s.count + 1 }))
+  }
+
+  const decrement = () => {
+    setState((s) => ({ ...s, count: s.count - 1 }))
+  }
+
+  return (
+    <div>
+      <p>Count: {state.count}</p>
+      <button onClick={decrement}>-</button>
+      <button onClick={increment}>+</button>
+    </div>
+  )
+}
+```
+
+The selector `(s) => ({ count: s.count })` tells Killa which slice of state this component cares about. The component re-renders only when `count` changes — not when other parts of the store change.
+
+## How it works
+
+<Steps>
+  <Step title="Create a store">
+    Call `createStore` with a plain object or initializer function. This happens once, outside the component tree.
+
+    ```javascript
+    import { createStore } from 'killa'
+
+    export const counterStore = createStore({ count: 0 })
+    ```
+  </Step>
+
+  <Step title="Subscribe in a component">
+    Call `useStore` with the store and a selector. The hook registers a subscription using `useSyncExternalStoreWithSelector` from `use-sync-external-store`, which is React 18 concurrent-mode safe.
+
+    ```jsx
+    const [state, setState] = useStore(counterStore, (s) => s.count)
+    ```
+  </Step>
+
+  <Step title="Update state">
+    Call `setState` with an updater function. The function receives the current state and must return the new state. Killa deep-compares the selected slice and only triggers a re-render when the value actually changes.
+
+    ```jsx
+    setState((s) => ({ ...s, count: s.count + 1 }))
+    ```
+  </Step>
+
+  <Step title="Share the store across components">
+    Because the store lives outside React, any number of components can subscribe to it without nesting them under a Provider. Each subscriber receives its own selected slice and re-renders independently.
+
+    ```jsx
+    // Works anywhere — no Provider wrapper required
+    import { counterStore } from './store'
+    ```
+  </Step>
+</Steps>
+
+## No Provider needed
+
+Unlike context-based libraries, Killa does not require a Provider component at the root of your app. Stores are module-level singletons. Any component that imports the store can call `useStore` directly:
+
+```jsx App.jsx
+import { Counter } from './Counter'
+import { CounterDisplay } from './CounterDisplay'
+
+// No <Provider> wrapping required
+export function App() {
+  return (
+    <div>
+      <Counter />
+      <CounterDisplay />
+    </div>
+  )
+}
+```
+
+```jsx CounterDisplay.jsx
+import { useStore } from 'killa/react'
+import { counterStore } from './store'
+
+export function CounterDisplay() {
+  // Subscribes to the same store independently
+  const [count] = useStore(counterStore, (s) => s.count)
+
+  return <p>Current count: {count}</p>
+}
+```
+
+Both components share the same store. When `Counter` calls `setState`, `CounterDisplay` re-renders automatically.
+
+## Next steps
+
+<Columns cols={2}>
+  <Card title="useStore hook" icon="hook" href="/react/use-store">
+    Full reference for the useStore hook, selectors, and TypeScript typing.
+  </Card>
+  <Card title="Silent states" icon="eye-off" href="/react/silent-states">
+    Read state without subscribing to re-renders.
+  </Card>
+  <Card title="Vanilla JS guide" icon="js" href="/vanilla/getting-started">
+    Learn the core store API outside of React.
+  </Card>
+  <Card title="API reference" icon="book" href="/api/create-store">
+    Full reference for `createStore` and store methods.
+  </Card>
+</Columns>

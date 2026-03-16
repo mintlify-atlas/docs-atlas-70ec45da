@@ -1,0 +1,179 @@
+---
+title: "Subscriptions"
+description: "Listen to state changes using global and selector-based subscriptions."
+keywords: ["killa", "subscribe", "selector", "subscription", "state change", "unsubscribe"]
+---
+
+`subscribe()` lets you react to state changes. You can listen to every update globally, or scope your listener to a specific slice of state using a selector.
+
+## Signature
+
+```typescript
+subscribe<U>(
+  subscriber: (state: T, prevState: T) => void,
+  selector?: (state: T) => U
+): () => boolean
+```
+
+- `subscriber` — function called with the new state and the previous state whenever a relevant change occurs.
+- `selector` — optional function that extracts a value from the state. When provided, the subscriber only fires when the selected value changes.
+- Returns an **unsubscribe function** that removes the subscriber when called.
+
+## Global subscriptions
+
+A global subscription fires every time `setState` produces a state change:
+
+```javascript
+import { createStore } from 'killa'
+
+const store = createStore({ counter: 0, filter: '' })
+
+store.subscribe((state, prevState) => {
+  console.log(state)     // { counter: 1, filter: '' }
+  console.log(prevState) // { counter: 0, filter: '' }
+})
+
+store.setState(() => ({ counter: 1 }))
+```
+
+The subscriber receives a deep clone of both the new state and the previous state. Mutating either argument does not affect the store.
+
+## Selector-based subscriptions
+
+Pass a selector as the second argument to limit when the subscriber fires. The subscriber is called only when the selected value changes — other updates are ignored.
+
+### Single-key selector
+
+Return a single value from the selector to watch one field:
+
+```javascript
+const store = createStore({ counter: 0, type: '', filter: '' })
+
+// Only fires when `counter` changes
+store.subscribe(
+  (state, prevState) => {
+    console.log(state)     // { counter: 1, type: '', filter: '' }
+    console.log(prevState) // { counter: 0, type: '', filter: '' }
+  },
+  (state) => state.counter
+)
+
+// This update does NOT trigger the subscriber above
+store.setState(() => ({ type: 'active' }))
+
+// This update DOES trigger it
+store.setState((state) => ({ ...state, counter: state.counter + 1 }))
+```
+
+### Multi-key selector
+
+Return an object from the selector to watch multiple fields. The subscriber fires when any of the selected values changes:
+
+```javascript
+const store = createStore({ counter: 0, type: '', filter: '' })
+
+// Fires when `counter` or `filter` changes
+store.subscribe(
+  (state) => {
+    console.log('counter or filter changed:', state.counter, state.filter)
+  },
+  (state) => ({ counter: state.counter, filter: state.filter })
+)
+
+// Fires — counter changed
+store.setState((state) => ({ ...state, counter: state.counter + 1 }))
+
+// Does NOT fire — only type changed
+store.setState(() => ({ type: 'active' }))
+
+// Fires — filter changed
+store.setState(() => ({ filter: 'done' }))
+```
+
+### How the selector short-circuits
+
+When a selector is registered, Killa stores the selected value at subscription time. On each `setState`, before calling the subscriber, Killa runs the selector against the new state and compares the result with the stored value using deep equality.
+
+- If the result is **equal**, the subscriber is skipped and the stored value is not updated.
+- If the result is **different**, the stored value is updated and the subscriber is called.
+
+This means a subscriber with a selector on `state.counter` will not fire when `state.type` changes, even though the full state object is different:
+
+```javascript
+const store = createStore({ counter: 0, type: '', filter: '' })
+
+store.subscribe(
+  (state) => {
+    console.log('type subscriber fired') // never prints in the example below
+  },
+  (state) => state.type
+)
+
+// Only counter changes — type subscriber does not fire
+store.setState((state) => ({ ...state, counter: state.counter + 1 }))
+```
+
+## Unsubscribing
+
+`subscribe()` returns a function that removes the subscriber when called:
+
+```javascript
+const store = createStore({ counter: 0 })
+
+const unsubscribe = store.subscribe((state) => {
+  console.log('counter:', state.counter)
+})
+
+store.setState(() => ({ counter: 1 })) // logs: counter: 1
+store.setState(() => ({ counter: 2 })) // logs: counter: 2
+
+unsubscribe()
+
+store.setState(() => ({ counter: 3 })) // nothing logged
+```
+
+The unsubscribe function returns `true` if the subscriber was found and removed, `false` if it was not registered.
+
+## Multiple subscribers
+
+You can attach as many subscribers as needed. Each runs independently:
+
+```javascript
+const store = createStore({ counter: 0, filter: '', type: '' })
+
+// Fires on every update
+store.subscribe((state) => {
+  console.log('global:', state)
+})
+
+// Fires only when counter changes
+store.subscribe(
+  (state) => console.log('counter:', state.counter),
+  (state) => state.counter
+)
+
+// Fires only when filter changes
+store.subscribe(
+  (state) => console.log('filter:', state.filter),
+  (state) => state.filter
+)
+
+store.setState((state) => ({ ...state, counter: state.counter + 1 }))
+// Logs:
+//   global: { counter: 1, filter: '', type: '' }
+//   counter: 1
+```
+
+## Removing all subscribers
+
+Call `destroy()` on the store to clear every subscriber at once:
+
+```javascript
+store.destroy()
+```
+
+This is useful during cleanup (e.g., in test teardown or when unmounting a view) when you want to stop all notifications without tracking individual unsubscribe functions.
+
+<Note>
+  `destroy()` removes subscribers but does not reset state. The store continues to work normally — you can still call `setState` and `getState` after calling `destroy()`.
+</Note>

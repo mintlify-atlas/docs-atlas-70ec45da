@@ -1,0 +1,234 @@
+---
+title: 'persist'
+description: 'Middleware that persists and rehydrates store state using a configurable storage backend.'
+keywords: ['persist', 'middleware', 'localStorage', 'sessionStorage', 'storage', 'revalidate']
+---
+
+The `persist` middleware synchronizes a Killa store with a storage backend (defaults to `localStorage`). On creation it immediately hydrates the store from storage, and on every `setState` call it writes the updated state back.
+
+## Import
+
+```typescript
+import { persist } from 'killa/persist'
+```
+
+## Signature
+
+```typescript
+function persist<T>(config: PersistConfig<T>): (store: Store<T>) => void
+```
+
+`persist` is a curried middleware factory. It returns a function that accepts a `Store<T>` — the shape expected by the `options.use` array in `createStore`.
+
+### Usage with `createStore`
+
+```typescript
+import { createStore } from 'killa'
+import { persist } from 'killa/persist'
+
+interface ThemeState {
+  theme: 'light' | 'dark'
+}
+
+const themeStore = createStore<ThemeState>(
+  { theme: 'light' },
+  {
+    use: [persist<ThemeState>({ name: 'theme' })]
+  }
+)
+```
+
+<Warning>
+  The middleware logs a console error (but does not throw) in three cases:
+  - The value passed is not a valid Killa store.
+  - `config.name` is empty or missing.
+  - The resolved storage is `null` (unavailable).
+</Warning>
+
+## `PersistConfig<T>`
+
+```typescript
+interface PersistConfig<T> {
+  name?: string
+  storage?: CustomStorage<T> | (() => CustomStorage<T>)
+  merge?: (state: T, persistedState: T) => T
+  revalidate?: boolean
+  revalidateTimeout?: number
+  encrypted?: boolean
+}
+```
+
+<ParamField path="name" type="string" required>
+  A unique key used to read and write state in the storage backend.
+
+  Must be a non-empty string. The middleware will log an error and abort if this is missing.
+
+  ```typescript
+  persist({ name: 'user-preferences' })
+  ```
+</ParamField>
+
+<ParamField path="storage" type="CustomStorage<T> | (() => CustomStorage<T>)" default="() => localStorage">
+  The storage backend to use. Accepts either:
+
+  - A `CustomStorage<T>` object directly.
+  - A factory function `() => CustomStorage<T>` — called lazily, with errors caught and treated as an unavailable storage.
+
+  Defaults to `normalizeStorage(() => window.localStorage)`, which wraps `localStorage` with serialization and encryption support.
+
+  ```typescript
+  import { normalizeStorage } from 'killa/persist'
+
+  persist({
+    name: 'session-data',
+    storage: normalizeStorage(() => window.sessionStorage)
+  })
+  ```
+</ParamField>
+
+<ParamField path="merge" type="(state: T, persistedState: T) => T">
+  A function that merges the current store state with the value loaded from storage during hydration.
+
+  Defaults to Killa's internal `merge` helper, which performs a shallow object merge (persisted values take precedence for keys that exist in storage).
+
+  Provide a custom merge function when you need deep merging or field-level control.
+
+  ```typescript
+  persist({
+    name: 'cart',
+    merge: (state, persisted) => ({
+      ...state,
+      ...persisted,
+      // never restore ephemeral fields from storage
+      checkoutInProgress: false,
+    })
+  })
+  ```
+</ParamField>
+
+<ParamField path="revalidate" type="boolean" default="true">
+  When `true`, the store re-hydrates from storage whenever the browser tab regains focus or the document becomes visible again (via `window focus` and `document visibilitychange` events).
+
+  Set to `false` to disable background revalidation and only hydrate once at store creation.
+</ParamField>
+
+<ParamField path="revalidateTimeout" type="number" default="200">
+  Delay in milliseconds before re-hydration runs after a focus/visibility event. Useful to debounce rapid tab-switching.
+</ParamField>
+
+<ParamField path="encrypted" type="boolean" default="false">
+  When `true`, both the storage key and value are encoded using Base64 (`btoa`/`atob`) before being written to storage.
+
+  <Warning>
+    Base64 encoding is obfuscation, not encryption. It prevents casual inspection of storage values but provides no cryptographic security.
+  </Warning>
+</ParamField>
+
+## `StoreWithPersist` interface
+
+When `persist` middleware is applied, it attaches a `persist` property to the store:
+
+```typescript
+interface StoreWithPersist {
+  $$persist: symbol
+  name: string
+  destroy: () => void
+  rehydrate: () => void
+  hydrated: () => boolean
+}
+```
+
+<ResponseField name="$$persist" type="symbol">
+  Internal symbol used to identify the persist attachment. Do not use directly.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The storage key name as provided in `PersistConfig.name`.
+</ResponseField>
+
+<ResponseField name="destroy" type="() => void">
+  Removes the persisted entry from storage (`storage.removeItem(name)`). Does not reset in-memory state.
+</ResponseField>
+
+<ResponseField name="rehydrate" type="() => void">
+  Manually triggers a hydration cycle — reads from storage and merges the result into the store's current state.
+</ResponseField>
+
+<ResponseField name="hydrated" type="() => boolean">
+  Returns `true` once the initial hydration has completed, `false` before that point.
+</ResponseField>
+
+### Accessing `store.persist`
+
+```typescript
+const store = createStore(
+  { count: 0 },
+  { use: [persist({ name: 'counter' })] }
+)
+
+// Check hydration status
+console.log(store.persist?.hydrated()) // true after mount
+
+// Manually refresh from storage
+store.persist?.rehydrate()
+
+// Clear from storage
+store.persist?.destroy()
+```
+
+## `CustomStorage<T>` interface
+
+Any storage backend passed to `persist` must implement the `CustomStorage<T>` interface:
+
+```typescript
+interface CustomStorage<T> {
+  getItem: (name: string) => T | null
+  setItem: (name: string, value: unknown) => void
+  removeItem: (name: string) => void
+}
+```
+
+<ResponseField name="getItem" type="(name: string) => T | null">
+  Returns the stored value for the given key, or `null` if absent.
+</ResponseField>
+
+<ResponseField name="setItem" type="(name: string, value: unknown) => void">
+  Stores the value under the given key.
+</ResponseField>
+
+<ResponseField name="removeItem" type="(name: string) => void">
+  Deletes the entry for the given key.
+</ResponseField>
+
+`localStorage` and `sessionStorage` satisfy this interface natively. For async storage (e.g., React Native's `AsyncStorage`), wrap the adapter with `normalizeStorage`. See [`normalizeStorage`](/api/normalize-storage) for details.
+
+## Full example
+
+```typescript
+import { createStore } from 'killa'
+import { persist, normalizeStorage } from 'killa/persist'
+
+interface AuthState {
+  token: string | null
+  userId: string | null
+}
+
+const authStore = createStore<AuthState>(
+  { token: null, userId: null },
+  {
+    use: [
+      persist<AuthState>({
+        name: 'auth',
+        storage: normalizeStorage(() => window.sessionStorage),
+        encrypted: true,
+        revalidate: true,
+        revalidateTimeout: 300,
+        merge: (current, persisted) => ({
+          ...current,
+          ...persisted,
+        }),
+      })
+    ]
+  }
+)
+```

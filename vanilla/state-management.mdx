@@ -1,0 +1,196 @@
+---
+title: "State management"
+description: "Update, merge, reset, and replace state using setState() and resetState()."
+keywords: ["killa", "setState", "resetState", "immutability", "state update", "force mode"]
+---
+
+All state changes in Killa go through two methods: `setState()` for incremental updates and `resetState()` for restoring or replacing the entire state.
+
+## setState()
+
+`setState` accepts an updater function that receives the current state and returns the values you want to change:
+
+```typescript
+setState(fn: (state: T) => Partial<T>, force?: boolean): void
+```
+
+The updater must return a plain object. You can return the full state or only the keys you want to update.
+
+### Updating a single key
+
+Return only the keys that need to change. Killa deep-merges the result into the existing state:
+
+```javascript
+const store = createStore({ counter: 0, filter: '', type: '' })
+
+store.setState(() => ({ counter: 1 }))
+
+store.getState() // { counter: 1, filter: '', type: '' }
+```
+
+`filter` and `type` are unchanged because you did not include them in the returned object.
+
+### Merging with current state
+
+When you need to reference current values, use the `state` argument passed to the updater:
+
+```javascript
+store.setState((state) => ({
+  ...state,
+  counter: state.counter + 1
+}))
+```
+
+Returning `...state` explicitly spreads all existing keys before applying the overrides. This is equivalent to a full replacement merge.
+
+<Tip>
+  Returning a partial object (without spreading `state`) is sufficient for simple key updates. Use `...state` when you want to guarantee all existing keys are preserved in the merged result.
+</Tip>
+
+### Change detection
+
+`setState` uses deep equality to compare the current state with the new values returned by the updater. If they are equal, no update is applied and subscribers are not notified:
+
+```javascript
+const store = createStore({ counter: 0 })
+
+store.subscribe((state) => console.log('updated:', state.counter))
+
+// No change — counter is already 0
+store.setState(() => ({ counter: 0 })) // subscriber does NOT fire
+
+// Counter changes from 0 to 1
+store.setState(() => ({ counter: 1 })) // subscriber fires
+```
+
+### Force mode
+
+Pass `true` as the second argument to bypass merging and replace the state entirely with the returned value:
+
+```javascript
+const store = createStore({ counter: 0, filter: '', type: '' })
+
+store.setState(() => ({ counter: 99 }), true)
+
+store.getState() // { counter: 99 }
+// filter and type are gone — force mode replaces, not merges
+```
+
+<Warning>
+  In force mode, the state becomes exactly the object you return. Any keys not included in your return value are removed from the store.
+</Warning>
+
+## resetState()
+
+`resetState` lets you restore the initial state or completely overwrite the store with a new value.
+
+### Reset to initial state
+
+Call `resetState()` with no arguments to restore the state to what it was when the store was first created:
+
+```javascript
+const store = createStore({ counter: 0, filter: '', type: '' })
+
+store.setState(() => ({ counter: 10, filter: 'active' }))
+store.getState() // { counter: 10, filter: 'active', type: '' }
+
+store.resetState()
+store.getState() // { counter: 0, filter: '', type: '' }
+```
+
+The initial state is captured at the time `createStore` is called. Subsequent updates do not affect what `resetState()` resets to.
+
+### Overwrite with new state
+
+Pass a plain object to `resetState()` to replace the entire store state with that object:
+
+```javascript
+store.resetState({ notes: [] })
+store.getState() // { notes: [] }
+```
+
+This is equivalent to calling `setState(() => newState, true)` — the state is force-replaced, not merged.
+
+<Note>
+  After calling `resetState({ notes: [] })`, the store's shape changes to `{ notes: [] }`. The original initial state is still preserved internally, so a subsequent `resetState()` with no arguments still restores `{ counter: 0, filter: '', type: '' }`.
+</Note>
+
+## Immutability
+
+Killa clones state at every boundary:
+
+- **On creation**: the initial state is deep-cloned with `just-clone`.
+- **On `getState()`**: returns a deep clone of the current internal state.
+- **On `setState()`**: the updater receives a clone of the current state, and the result is deep-cloned before being stored.
+
+This means you can safely mutate objects returned by `getState()` without affecting the store:
+
+```javascript
+const store = createStore({ items: [1, 2, 3] })
+
+const snapshot = store.getState()
+snapshot.items.push(4) // no effect on the store
+
+store.getState().items // [1, 2, 3]
+```
+
+## Custom equality with the `compare` option
+
+By default, Killa uses deep equality to decide whether state has changed. You can override this by passing a `compare` function in the options:
+
+```typescript
+interface Options<T> {
+  compare?: (a: unknown, b: unknown) => boolean
+}
+```
+
+The `compare` function receives the current state and the new values returned by the updater. Return `true` to skip the update, `false` to apply it.
+
+**Example: always update, even if values are equal**
+
+```javascript
+import { createStore } from 'killa'
+
+const store = createStore(
+  { counter: 0 },
+  { compare: () => false } // never treat states as equal
+)
+
+store.subscribe((state) => console.log('fired:', state.counter))
+
+store.setState(() => ({ counter: 0 })) // fires even though value didn't change
+```
+
+**Example: shallow equality**
+
+```javascript
+const shallowEqual = (a, b) => {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object') return false
+  const keysA = Object.keys(a)
+  const keysB = Object.keys(b)
+  if (keysA.length !== keysB.length) return false
+  return keysA.every((key) => a[key] === b[key])
+}
+
+const store = createStore(
+  { counter: 0, name: 'Killa' },
+  { compare: shallowEqual }
+)
+```
+
+<Tip>
+  The default deep equality is sufficient for most use cases. Provide a custom `compare` function only when you have specific performance requirements or non-standard equality semantics.
+</Tip>
+
+## destroy()
+
+Call `destroy()` to remove all active subscribers. Subsequent state updates will no longer notify anyone:
+
+```javascript
+store.destroy()
+
+store.setState(() => ({ counter: 999 })) // no subscribers notified
+```
+
+This does not reset or clear the state — it only removes the subscriber set.

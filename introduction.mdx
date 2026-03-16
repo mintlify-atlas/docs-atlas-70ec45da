@@ -1,0 +1,108 @@
+---
+title: "Introduction"
+description: "What is Killa, why use it, and how it compares to similar state management tools."
+keywords: ["killa", "state management", "zustand", "swr", "react", "vanilla js"]
+---
+
+Killa is a **small and lightweight state management library** for vanilla JavaScript and React. It is inspired by [Zustand](https://github.com/pmndrs/zustand) and [SWR](https://swr.vercel.app), combining a Zustand-style store API with fine-grained selector subscriptions that prevent unnecessary re-renders.
+
+```bash
+npm install killa
+```
+
+## Why Killa?
+
+Most state management solutions require significant setup: providers, reducers, action types, or complex configuration. Killa takes a different approach — you create a store from a plain object and subscribe to exactly the state you need. Nothing more.
+
+The internal state is **immutable by design**. Every call to `getState()` returns a deep clone, so there is no risk of accidentally mutating shared state across different parts of your application.
+
+## Key features
+
+<Columns cols={2}>
+  <Card title="Zero boilerplate" icon="wand-magic-sparkles">
+    Create a store with a plain object or initializer function. No reducers, no action types, no provider wrappers required.
+  </Card>
+  <Card title="Selector subscriptions" icon="filter">
+    Subscribe to only the slices of state your component or function cares about. Updates only fire when the selected value actually changes.
+  </Card>
+  <Card title="Immutable state" icon="lock">
+    All reads return deep clones of internal state. Mutations to the returned object never affect the store.
+  </Card>
+  <Card title="Internal actions" icon="bolt">
+    Initialize your store with a function that receives `get` and `set`, letting you co-locate update logic directly in the store definition.
+  </Card>
+  <Card title="Persist middleware" icon="floppy-disk">
+    Persist and rehydrate state to `localStorage`, `sessionStorage`, or any custom storage — with optional encryption and auto-revalidation.
+  </Card>
+  <Card title="Custom middleware" icon="puzzle-piece">
+    Extend any store with custom middleware using the `use` option in `createStore`. Middleware receives the full store instance.
+  </Card>
+  <Card title="Vanilla \& React" icon="code">
+    Works in plain JavaScript, React 18+, React Native, and Next.js. The core store has no framework dependencies.
+  </Card>
+  <Card title="Tiny footprint" icon="feather">
+    Minimal dependencies. The core store relies only on `just-clone` for deep cloning, keeping bundle size small.
+  </Card>
+</Columns>
+
+## How it compares
+
+Killa occupies a deliberate middle ground between two popular libraries:
+
+| | Zustand | SWR | Killa |
+|---|---|---|---|
+| **Primary focus** | Client state | Server/async state | Client state |
+| **React required** | Optional | Yes | Optional |
+| **Selector re-renders** | Yes | Yes | Yes |
+| **Immutable reads** | No | N/A | Yes |
+| **Internal actions** | Yes | No | Yes |
+| **Persist middleware** | Via plugin | N/A | Built-in |
+| **CDN / UMD build** | No | No | Yes |
+
+If you have used Zustand before, Killa will feel immediately familiar. The main differences are:
+
+- State reads always return deep clones — you cannot accidentally mutate the store.
+- The `subscribe` method supports a selector as a second argument directly on the store (not just in React hooks).
+- The `resetState` method lets you restore the initial state or replace it with a new one at any time.
+- A UMD build is provided for direct use in browsers via `<script>` tags, without a build step.
+
+## Package structure
+
+Killa ships several entry points so you only import what you use:
+
+| Import path | What it provides |
+|---|---|
+| `killa` | `createStore` — the main entry point |
+| `killa/core` | Core `createStore` and TypeScript types |
+| `killa/react` | `useStore` React hook |
+| `killa/persist` | `persist` and `normalizeStorage` middleware |
+| `killa/deep-equals` | Internal deep equality utility |
+| `killa/helpers` | Internal helper utilities |
+| `killa/constants` | Internal constants |
+
+<Note>
+  `killa/react` requires React >= 18.0.0. The `killa` and `killa/core` packages have no React dependency and work in any JavaScript environment.
+</Note>
+
+## Next steps
+
+<Columns cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Killa and understand the available package exports and peer dependencies.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create your first store and use it in vanilla JavaScript and React.
+  </Card>
+  <Card title="Vanilla JS guide" icon="js" href="/vanilla/getting-started">
+    Learn the full vanilla store API: `getState`, `setState`, `subscribe`, `resetState`, and `destroy`.
+  </Card>
+  <Card title="React guide" icon="react" href="/react/getting-started">
+    Use Killa in React components with the `useStore` hook and fine-grained re-render control.
+  </Card>
+  <Card title="Persist middleware" icon="floppy-disk" href="/middleware/persist">
+    Persist store state across page reloads with `localStorage`, `sessionStorage`, or custom storage.
+  </Card>
+  <Card title="API reference" icon="book" href="/api/create-store">
+    Full API reference for `createStore`, store methods, `useStore`, and middleware.
+  </Card>
+</Columns>

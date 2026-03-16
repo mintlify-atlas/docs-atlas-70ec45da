@@ -1,0 +1,123 @@
+---
+title: "Middleware overview"
+description: "Extend Killa stores using the middleware system. Learn how to apply middleware and what the middleware pattern makes possible."
+keywords: ["killa", "middleware", "use", "Options", "extend store", "intercept setState"]
+---
+
+Middleware lets you extend a store's behavior at creation time. You can intercept `setState`, add new properties to the store, attach event listeners, or integrate external systems — all without modifying the store's initializer.
+
+## Applying middleware
+
+Pass middleware to `createStore` through the `use` array in the options object:
+
+```javascript
+import { createStore } from 'killa'
+import { persist } from 'killa/persist'
+
+const store = createStore(
+  { counter: 0, filter: '' },
+  {
+    use: [
+      persist({ name: 'my-store' })
+    ]
+  }
+)
+```
+
+The `use` array accepts any number of middleware functions. Each one runs in order immediately after the store is created.
+
+## Middleware signature
+
+A middleware is a function that receives the store instance and can mutate or extend it:
+
+```typescript
+(store: Store<T>) => void
+```
+
+The middleware receives the fully constructed store — including `getState`, `setState`, `subscribe`, `resetState`, and `destroy`. It can:
+
+- **Wrap `setState`** — intercept every state update to add side effects such as persistence or logging.
+- **Add properties** — attach new methods or metadata directly to the store object.
+- **Register listeners** — subscribe to browser events (e.g., `window focus`) to react to external triggers.
+- **Validate the store** — inspect the store's symbol or structure and bail out early if it is not a valid target.
+
+## Writing custom middleware
+
+Here is a minimal middleware that logs every state update to the console:
+
+```javascript
+const logger = (store) => {
+  const originalSetState = store.setState
+
+  store.setState = (updater, force) => {
+    const prev = store.getState()
+    originalSetState(updater, force)
+    const next = store.getState()
+    console.log('[killa] state changed', { prev, next })
+  }
+}
+
+const store = createStore(
+  { counter: 0 },
+  { use: [logger] }
+)
+```
+
+The pattern is always the same:
+
+<Steps>
+  <Step title="Capture the original method">
+    Store a reference to `store.setState` (or any other method you want to wrap).
+  </Step>
+  <Step title="Replace the method">
+    Assign a new function to `store.setState`. Call the captured original inside it to preserve the default behavior.
+  </Step>
+  <Step title="Add any side effects">
+    Run your logic before or after the original call — persist state, emit events, validate payloads, etc.
+  </Step>
+</Steps>
+
+## Middleware execution order
+
+Multiple middleware run in the order they appear in the `use` array. Each receives the same store reference, so changes made by one middleware are visible to the next:
+
+```javascript
+const store = createStore(
+  { counter: 0 },
+  {
+    use: [
+      firstMiddleware,  // runs first
+      secondMiddleware  // runs second, sees changes from firstMiddleware
+    ]
+  }
+)
+```
+
+<Note>
+  Because middleware run sequentially and share the same store object, the order matters when multiple middleware wrap the same method.
+</Note>
+
+## TypeScript
+
+To type a middleware, import the `Store` type from `killa/core`:
+
+```typescript
+import type { Store } from 'killa/core'
+
+const logger = <T>(store: Store<T>): void => {
+  const original = store.setState
+
+  store.setState = (updater, force) => {
+    original(updater, force)
+    console.log('[killa] new state:', store.getState())
+  }
+}
+```
+
+## Built-in middleware
+
+<Columns cols={2}>
+  <Card title="Persist" icon="database" href="/middleware/persist">
+    Automatically save and restore store state using localStorage, sessionStorage, or any custom storage backend.
+  </Card>
+</Columns>

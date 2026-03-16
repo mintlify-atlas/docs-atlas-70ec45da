@@ -1,0 +1,140 @@
+---
+title: "Internal actions"
+description: "Embed update logic directly in your store using the initializer function pattern."
+keywords: ["killa", "actions", "initializer function", "createStore", "get", "set", "store methods"]
+---
+
+Killa lets you define update logic — actions — directly inside the store state. Instead of calling `setState` from outside the store, you embed methods that use `get` and `set` to read and update state from within.
+
+## The initializer function
+
+When you pass a function to `createStore`, it receives two arguments:
+
+- `get` — equivalent to `store.getState()`. Returns a clone of the current state.
+- `set` — equivalent to `store.setState()`. Accepts an updater function and an optional `force` flag.
+
+The function must return a plain object. Any functions you include in the returned object become part of the store state and are accessible via `getState()`:
+
+```javascript
+import { createStore } from 'killa'
+
+const store = createStore((get, set) => ({
+  count: 1,
+  inc: () => set(() => ({ count: get().count + 1 })),
+  getCount: () => get().count
+}))
+
+store.getState().inc()      // increments count to 2
+store.getState().getCount() // 2
+```
+
+<Note>
+  `get()` inside an action returns a deep clone of the current state, just like calling `store.getState()` externally. Changes made to the clone have no effect on the store.
+</Note>
+
+## Building a complete counter
+
+Here is a counter store with increment, decrement, and reset actions:
+
+```javascript
+import { createStore } from 'killa'
+
+const counterStore = createStore((get, set) => ({
+  count: 0,
+  increment: () => set(() => ({ count: get().count + 1 })),
+  decrement: () => set(() => ({ count: get().count - 1 })),
+  reset: () => set(() => ({ count: 0 }))
+}))
+
+counterStore.getState().increment() // count: 1
+counterStore.getState().increment() // count: 2
+counterStore.getState().decrement() // count: 1
+counterStore.getState().reset()     // count: 0
+```
+
+## Reading derived values
+
+Actions are not limited to updating state — you can also use them to compute derived values:
+
+```javascript
+const store = createStore((get, set) => ({
+  items: ['a', 'b', 'c'],
+  filter: '',
+  setFilter: (value) => set(() => ({ filter: value })),
+  getFiltered: () => {
+    const { items, filter } = get()
+    return items.filter((item) => item.includes(filter))
+  }
+}))
+
+store.getState().setFilter('b')
+store.getState().getFiltered() // ['b']
+```
+
+## Actions and subscriptions
+
+Subscriptions work the same way whether state is updated through an action or an external `setState` call. Subscribers are notified after any `set()` call inside an action:
+
+```javascript
+const store = createStore((get, set) => ({
+  count: 0,
+  increment: () => set(() => ({ count: get().count + 1 }))
+}))
+
+store.subscribe(
+  (state) => console.log('count changed:', state.count),
+  (state) => state.count
+)
+
+store.getState().increment() // logs: count changed: 1
+store.getState().increment() // logs: count changed: 2
+```
+
+## Initializer function vs external setState
+
+<Columns cols={2}>
+  <Card title="Use internal actions when..." icon="check">
+    - Update logic belongs with the state it modifies
+    - You want a self-contained, importable store module
+    - Multiple parts of the app need to call the same update logic
+    - The logic requires reading state (`get()`) before updating
+  </Card>
+  <Card title="Use external setState when..." icon="sliders">
+    - The update logic is simple and one-off
+    - The update depends on component-local data not in the store
+    - You prefer a flat data-only store and separate action modules
+    - You are working with React and want to colocate logic in a component
+  </Card>
+</Columns>
+
+Both approaches are valid. Many applications use a mix — a store with internal actions for shared logic, and occasional external `setState` calls for local, one-off updates.
+
+## TypeScript
+
+When using TypeScript, type the return value of the initializer to get full inference on `getState()`:
+
+```typescript
+import { createStore } from 'killa'
+
+interface CounterState {
+  count: number
+  increment: () => void
+  decrement: () => void
+  reset: () => void
+  getCount: () => number
+}
+
+const store = createStore<CounterState>((get, set) => ({
+  count: 0,
+  increment: () => set(() => ({ count: get().count + 1 })),
+  decrement: () => set(() => ({ count: get().count - 1 })),
+  reset: () => set(() => ({ count: 0 })),
+  getCount: () => get().count
+}))
+
+const count: number = store.getState().getCount() // typed correctly
+```
+
+<Tip>
+  Define the state interface separately and pass it as the type parameter to `createStore`. This avoids circular type references when an action calls `get()` and the return type depends on the interface.
+</Tip>

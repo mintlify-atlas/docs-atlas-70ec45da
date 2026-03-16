@@ -1,80 +1,271 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Create your first Killa store and use it in vanilla JavaScript and React."
+keywords: ["killa", "quickstart", "createStore", "useStore", "getting started"]
 ---
 
-## Get started in three steps
+This guide walks you through creating a store, reading and updating state, subscribing to changes, and using the store in a React component.
 
-Get your documentation site running locally and make your first customization.
+## Vanilla JavaScript
 
-### Step 1: Set up your local environment
+<Steps>
+  <Step title="Create a store">
+    Import `createStore` from `killa` and pass it a plain object describing your initial state. The store's internal state is immutable — reads always return a deep clone.
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```javascript
+    import { createStore } from 'killa'
+    // CommonJS: const { createStore } = require('killa')
 
-### Step 2: Deploy your changes
+    const store = createStore({ counter: 0 })
+    ```
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    You can also initialize the store with a function that receives `get` and `set`. This lets you define update logic directly inside the store:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    ```javascript
+    import { createStore } from 'killa'
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    const store = createStore((get, set) => ({
+      count: 0,
+      increment: () => set(() => ({ count: get().count + 1 })),
+      decrement: () => set(() => ({ count: get().count - 1 })),
+      getCount: () => get().count
+    }))
 
-### Step 3: Go live
+    store.getState().increment() // count becomes 1
+    store.getState().getCount()  // 1
+    ```
+  </Step>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+  <Step title="Read state">
+    Call `getState()` to retrieve a snapshot of the current state.
+
+    ```javascript
+    store.getState() // { counter: 0 }
+    ```
+  </Step>
+
+  <Step title="Update state">
+    Call `setState()` with a function that receives the current state and returns the updated values. You can return a partial object — only the keys you return are merged in.
+
+    ```javascript
+    store.setState((state) => ({
+      ...state,
+      counter: state.counter + 1
+    }))
+
+    store.getState() // { counter: 1 }
+    ```
+  </Step>
+
+  <Step title="Subscribe to changes">
+    Use `subscribe()` to react to state updates. The subscriber receives the new state and the previous state.
+
+    ```javascript
+    // Global subscriber — fires on every state update
+    store.subscribe((state, prevState) => {
+      console.log('New:', state.counter)
+      console.log('Old:', prevState.counter)
+    })
+
+    store.setState((state) => ({ ...state, counter: state.counter + 1 }))
+    // Logs: New: 2, Old: 1
+    ```
+
+    Pass a selector as the second argument to subscribe only to a specific slice of state. The subscriber fires only when that slice changes:
+
+    ```javascript
+    const store = createStore({ counter: 0, filter: '', type: '' })
+
+    // Only fires when `counter` changes
+    store.subscribe(
+      (state, prevState) => {
+        console.log('counter changed:', state.counter)
+      },
+      (state) => state.counter
+    )
+
+    // Only fires when `counter` or `filter` changes
+    store.subscribe(
+      (state) => {
+        console.log('counter or filter changed')
+      },
+      (state) => ({ counter: state.counter, filter: state.filter })
+    )
+
+    store.setState((state) => ({ ...state, counter: state.counter + 1 }))
+    // Only the first two subscribers fire; the `type` subscriber does not
+    ```
+
+    `subscribe` returns an unsubscribe function:
+
+    ```javascript
+    const unsubscribe = store.subscribe((state) => {
+      console.log(state)
+    })
+
+    // Later, stop listening:
+    unsubscribe()
+    ```
+  </Step>
+
+  <Step title="Reset or replace state">
+    Call `resetState()` with no arguments to restore the initial state, or pass a new object to replace the state entirely:
+
+    ```javascript
+    store.resetState()             // Restores { counter: 0, filter: '', type: '' }
+    store.resetState({ notes: [] }) // Replaces all state with { notes: [] }
+    ```
+  </Step>
+
+  <Step title="Destroy all subscribers">
+    Call `destroy()` to remove all active subscribers at once. No further notifications will be sent after this call.
+
+    ```javascript
+    store.destroy()
+    ```
+  </Step>
+</Steps>
+
+---
+
+## React
+
+<Steps>
+  <Step title="Install the React peer dependencies">
+    The `killa/react` entry point requires React >= 18 and `use-sync-external-store`.
+
+    <CodeGroup>
+
+    ```bash npm
+    npm install killa react react-dom use-sync-external-store
+    ```
+
+    ```bash yarn
+    yarn add killa react react-dom use-sync-external-store
+    ```
+
+    ```bash pnpm
+    pnpm add killa react react-dom use-sync-external-store
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Create a store">
+    Create your store outside the component tree. Stores in Killa are not tied to React — they are plain JavaScript objects.
+
+    ```javascript
+    import { createStore } from 'killa'
+
+    export const counterStore = createStore({ counter: 0, filter: '' })
+    ```
+  </Step>
+
+  <Step title="Subscribe to the store in a component">
+    Import `useStore` from `killa/react` and pass it your store and a selector function. The component only re-renders when the selected values change.
+
+    ```jsx
+    import { useStore } from 'killa/react'
+    import { counterStore } from './store'
+
+    function Counter() {
+      // This component re-renders only when `counter` or `filter` changes
+      const [state, setState] = useStore(counterStore, (state) => ({
+        counter: state.counter,
+        filter: state.filter
+      }))
+
+      const handleIncrement = () => {
+        setState((state) => ({
+          ...state,
+          counter: state.counter + 1
+        }))
+      }
+
+      return (
+        <div>
+          <p>Counter: {state.counter}</p>
+          <button onClick={handleIncrement}>+1</button>
+        </div>
+      )
+    }
+    ```
+
+    `useStore` returns a tuple of `[selectedState, setState]`. The `setState` function is the same as `store.setState` — it accepts an updater function.
+  </Step>
+
+  <Step title="Use a silent state">
+    A silent state lets you read from the store without subscribing to re-renders. The component will not re-render when the store changes, but you can still call `setState` to update it.
+
+    Pass `null` as the selector to get the whole store silently:
+
+    ```jsx
+    // Get the full store without subscribing to re-renders
+    const [state, setState] = useStore(counterStore, null)
+    ```
+
+    Or pass `true` as the third argument to silence a specific selector:
+
+    ```jsx
+    // Select only `counter`, but do not re-render when it changes
+    const [counter, setState] = useStore(counterStore, (state) => state.counter, true)
+    ```
+
+    <Tip>
+      Silent states are useful when you need access to state inside an event handler but do not want the component to re-render on every state change.
+    </Tip>
+  </Step>
+</Steps>
+
+---
+
+## Full example
+
+A complete counter component using a store with internal actions:
+
+```jsx
+import { createStore } from 'killa'
+import { useStore } from 'killa/react'
+
+const counterStore = createStore((get, set) => ({
+  count: 0,
+  increment: () => set(() => ({ count: get().count + 1 })),
+  decrement: () => set(() => ({ count: get().count - 1 })),
+  reset: () => set(() => ({ count: 0 }))
+}))
+
+function Counter() {
+  const [state] = useStore(counterStore, (s) => ({
+    count: s.count,
+    increment: s.increment,
+    decrement: s.decrement,
+    reset: s.reset
+  }))
+
+  return (
+    <div>
+      <p>Count: {state.count}</p>
+      <button onClick={state.decrement}>-</button>
+      <button onClick={state.increment}>+</button>
+      <button onClick={state.reset}>Reset</button>
+    </div>
+  )
+}
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+<Columns cols={2}>
+  <Card title="Vanilla JS guide" icon="js" href="/vanilla/getting-started">
+    Explore the full vanilla store API in depth.
+  </Card>
+  <Card title="React guide" icon="react" href="/react/getting-started">
+    Learn advanced React patterns and re-render optimization with Killa.
+  </Card>
+  <Card title="Persist middleware" icon="floppy-disk" href="/middleware/persist">
+    Persist your store state to localStorage or custom storage.
+  </Card>
+  <Card title="API reference" icon="book" href="/api/create-store">
+    Full API reference for `createStore`, store methods, and `useStore`.
+  </Card>
+</Columns>

@@ -1,0 +1,302 @@
+---
+title: "Persist middleware"
+description: "Save and restore Killa store state with the persist middleware. Supports localStorage, sessionStorage, custom storage, and encryption."
+keywords: ["killa", "persist", "localStorage", "sessionStorage", "normalizeStorage", "encrypted", "revalidate", "hydrated"]
+---
+
+The persist middleware automatically saves your store's state to a storage backend and restores it when the store is created. It uses `localStorage` by default.
+
+## Installation
+
+The persist middleware ships with the `killa` package and is imported from its own entry point:
+
+<CodeGroup>
+
+```bash npm
+npm install killa
+```
+
+```bash yarn
+yarn add killa
+```
+
+```bash pnpm
+pnpm add killa
+```
+
+</CodeGroup>
+
+## Basic usage
+
+Import `persist` from `killa/persist` and pass it to the `use` array:
+
+```javascript
+import { createStore } from 'killa'
+import { persist } from 'killa/persist'
+
+const store = createStore(
+  { counter: 0, filter: '' },
+  {
+    use: [
+      persist({ name: 'my-store' })
+    ]
+  }
+)
+```
+
+On first load, the middleware checks `localStorage` for an entry named `my-store`. If found, it merges the persisted state into the store. Every subsequent `setState` call writes the updated state back to storage.
+
+<Note>
+  `name` is required. If it is not provided, the middleware logs an error and does nothing.
+</Note>
+
+## Configuration
+
+`persist` accepts a `PersistConfig<T>` object:
+
+<ParamField path="name" type="string" required>
+  The key used to read from and write to storage. Must be unique across all persisted stores on the same origin.
+</ParamField>
+
+<ParamField path="storage" type="CustomStorage<T> | (() => CustomStorage<T>)" default="() => localStorage">
+  The storage backend to use. Defaults to `localStorage`. Pass a `normalizeStorage()` call to use a different backend — see [Custom storage](#custom-storage).
+</ParamField>
+
+<ParamField path="merge" type="(state: T, persistedState: T) => T">
+  A function that combines the current store state with the persisted state during hydration. Defaults to a built-in shallow merge.
+</ParamField>
+
+<ParamField path="revalidate" type="boolean" default="true">
+  When `true`, the store re-reads from storage whenever the browser tab regains focus or becomes visible. Useful for keeping state in sync across tabs.
+</ParamField>
+
+<ParamField path="revalidateTimeout" type="number" default="200">
+  Milliseconds to wait before triggering a revalidation after a focus or visibility event. Increase this if your storage operations are slow.
+</ParamField>
+
+<ParamField path="encrypted" type="boolean" default="false">
+  When `true`, both the storage key and stored value are encoded using `btoa`/`atob` before writing to storage. Decoded automatically on read.
+</ParamField>
+
+## Custom storage
+
+To use a storage backend other than `localStorage`, wrap it with `normalizeStorage`. This helper normalizes the storage interface Killa expects and handles serialization and deserialization internally.
+
+```javascript
+import { createStore } from 'killa'
+import { persist, normalizeStorage } from 'killa/persist'
+
+const store = createStore(
+  { counter: 0, filter: '' },
+  {
+    use: [
+      persist({
+        name: 'my-store',
+        storage: normalizeStorage(() => sessionStorage)
+      })
+    ]
+  }
+)
+```
+
+`normalizeStorage` takes an initializer function that returns a storage object implementing the `CustomStorage<T>` interface:
+
+```typescript
+export interface CustomStorage<T> {
+  getItem: (name: string) => T | null
+  setItem: (name: string, value: unknown) => void
+  removeItem: (name: string) => void
+}
+```
+
+Any object with these three methods is a valid storage backend. This lets you integrate IndexedDB wrappers, async-to-sync adapters, or in-memory stores for testing.
+
+<Note>
+  `normalizeStorage` returns `null` if the initializer throws or returns a falsy value. The middleware will log an error and skip persistence if storage cannot be initialised — for example, when `sessionStorage` is unavailable in a server-side environment.
+</Note>
+
+### Encryption with custom storage
+
+`normalizeStorage` also accepts an `encrypted` option independently of the top-level `PersistConfig`:
+
+```javascript
+const storage = normalizeStorage(() => sessionStorage, { encrypted: true })
+```
+
+When encryption is enabled on the storage level, both the key name and serialized value are encoded with `btoa` before being written.
+
+## Encryption
+
+Set `encrypted: true` in the persist config to encode state in `localStorage`:
+
+```javascript
+const store = createStore(
+  { counter: 0, filter: '' },
+  {
+    use: [
+      persist({
+        name: 'my-store',
+        encrypted: true
+      })
+    ]
+  }
+)
+```
+
+<Warning>
+  Killa's encryption uses `btoa`/`atob` (Base64 encoding), which obfuscates but does not cryptographically protect stored data. Do not use this for sensitive information.
+</Warning>
+
+## Auto-revalidate on focus
+
+When `revalidate` is `true` (the default), the middleware registers two browser event listeners:
+
+- `window` — `focus`
+- `document` — `visibilitychange`
+
+Whenever either event fires and the document is visible, the middleware re-reads from storage after `revalidateTimeout` milliseconds and merges the result into the store. This keeps multiple tabs in sync without any extra configuration.
+
+To disable this behavior:
+
+```javascript
+persist({
+  name: 'my-store',
+  revalidate: false
+})
+```
+
+To adjust the delay:
+
+```javascript
+persist({
+  name: 'my-store',
+  revalidate: true,
+  revalidateTimeout: 500 // wait 500ms before rehydrating
+})
+```
+
+## The `store.persist` API
+
+After the middleware runs, the store gains a `persist` property with the following interface:
+
+```typescript
+interface StoreWithPersist {
+  $$persist: symbol   // identity symbol for the persist middleware
+  name: string        // the storage key passed in config
+  destroy: () => void
+  rehydrate: () => void
+  hydrated: () => boolean
+}
+```
+
+### `store.persist.hydrated()`
+
+Returns `true` once the initial hydration from storage has completed:
+
+```javascript
+store.persist.hydrated() // false before hydration, true after
+```
+
+### `store.persist.rehydrate()`
+
+Manually triggers a re-read from storage and merges the result into the store. Useful after you know external code has written to the same storage key:
+
+```javascript
+store.persist.rehydrate()
+```
+
+### `store.persist.destroy()`
+
+Removes the persisted entry from storage entirely. The store continues to work normally — it just has no saved state to restore on the next page load:
+
+```javascript
+store.persist.destroy()
+```
+
+### `store.persist.name`
+
+The storage key the middleware is using, as passed in the config:
+
+```javascript
+store.persist.name // 'my-store'
+```
+
+## Full example
+
+```javascript
+import { createStore } from 'killa'
+import { persist, normalizeStorage } from 'killa/persist'
+
+const store = createStore(
+  { counter: 0, filter: '' },
+  {
+    use: [
+      persist({
+        name: 'app-state',
+        storage: normalizeStorage(() => sessionStorage),
+        revalidate: true,
+        revalidateTimeout: 300,
+        encrypted: false
+      })
+    ]
+  }
+)
+
+// Check if the store has loaded data from storage
+console.log(store.persist.hydrated()) // true
+
+// Manually reload from storage
+store.persist.rehydrate()
+
+// Clear persisted data
+store.persist.destroy()
+```
+
+## Browser UMD bundle
+
+To use the persist middleware in a browser without a build step, load the separate middlewares bundle from a CDN:
+
+<CodeGroup>
+
+```html unpkg
+<script src="https://unpkg.com/killa@1.10.0/dist/umd/killa.min.js"></script>
+<script src="https://unpkg.com/killa@1.10.0/dist/umd/killaMiddlewares.min.js"></script>
+```
+
+```html jsdelivr
+<script src="https://cdn.jsdelivr.net/npm/killa@1.10.0/dist/umd/killa.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/killa@1.10.0/dist/umd/killaMiddlewares.min.js"></script>
+```
+
+</CodeGroup>
+
+The middlewares bundle exposes `window.killaMiddlewares`. Access `persist` and `normalizeStorage` from it:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/killa@1.10.0/dist/umd/killa.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/killa@1.10.0/dist/umd/killaMiddlewares.min.js"></script>
+<script>
+  const { createStore } = window.killa
+  const { persist, normalizeStorage } = window.killaMiddlewares
+
+  const store = createStore(
+    { counter: 0 },
+    {
+      use: [
+        persist({ name: 'my-store' })
+      ]
+    }
+  )
+</script>
+```
+
+## Next steps
+
+<Columns cols={2}>
+  <Card title="Middleware overview" icon="layers" href="/middleware/overview">
+    Learn how the middleware system works and how to write your own middleware.
+  </Card>
+  <Card title="API reference" icon="book" href="/api/persist">
+    Full API reference for the persist function and normalizeStorage.
+  </Card>
+</Columns>

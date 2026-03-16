@@ -1,0 +1,161 @@
+---
+title: "Silent states"
+description: "Read Killa store state at mount time without subscribing to re-renders using silect mode."
+keywords: ["killa", "silect", "silent state", "useStore", "no re-render", "write-only"]
+---
+
+Killa's silect (silent) mode lets a component read state at mount time without subscribing to future updates. The component will not re-render when that state changes, but it can still call `setState` to update the store.
+
+<Note>
+  The parameter name is `silect` — this is the actual spelling used in the source code and API.
+</Note>
+
+## How silect mode works
+
+Normally, `useStore` registers the component as a subscriber via `useSyncExternalStoreWithSelector`. Every time the selected state changes, the component re-renders.
+
+When silect mode is enabled, `useStore` captures the state at mount time using a `useRef` and passes that frozen snapshot as the `getSnapshot` function to `useSyncExternalStoreWithSelector`. Because the snapshot never changes, React never schedules a re-render for this component — even when the store is updated by another component or an external event.
+
+`setState` still works. Updates are written to the store and other subscribed components still re-render. Only the silect component is unaffected.
+
+## Enabling silect mode
+
+There are two ways to use silect mode:
+
+### Pass `null` as the selector
+
+Passing `null` returns the full store state and automatically enables silect mode:
+
+```jsx
+const [state, setState] = useStore(store, null)
+```
+
+`state` is the complete store state as it was at the time the component mounted. It will not update after that.
+
+### Pass `true` as the third argument
+
+Pass a selector and `true` as the third argument to silence a specific slice:
+
+```jsx
+const [count, setState] = useStore(store, (s) => s.count, true)
+```
+
+`count` is the value of `s.count` at mount time. Changes to `count` in the store do not cause this component to re-render.
+
+## Use cases
+
+### Write-only interactions
+
+A component that only dispatches actions does not need to re-render when state changes. Silect mode prevents unnecessary renders:
+
+```jsx
+import { createStore } from 'killa'
+import { useStore } from 'killa/react'
+
+const store = createStore({ count: 0, log: [] })
+
+function ResetButton() {
+  // This component never re-renders on store changes.
+  // It only needs setState to dispatch the reset action.
+  const [, setState] = useStore(store, null)
+
+  const handleReset = () => {
+    setState(() => ({ count: 0, log: [] }))
+  }
+
+  return <button onClick={handleReset}>Reset</button>
+}
+```
+
+### Accessing state inside event handlers
+
+When you need the current store state inside an event handler but do not want the component to re-render on every change, silect mode provides a stable reference to read from at call time:
+
+```jsx
+const store = createStore({ items: [], userId: 'u1' })
+
+function SubmitButton() {
+  const [state, setState] = useStore(store, null)
+
+  const handleSubmit = () => {
+    // Read the latest state at the moment the button is clicked.
+    // The component itself does not re-render when `items` or `userId` changes.
+    console.log('Submitting for user:', state.userId)
+    console.log('Items:', state.items)
+
+    setState((s) => ({ ...s, items: [] }))
+  }
+
+  return <button onClick={handleSubmit}>Submit</button>
+}
+```
+
+<Warning>
+  Because silect state is captured at mount time, `state` inside your component body will always reflect the value at mount — not the current store value. Only use silect state inside event handlers and callbacks where you need a point-in-time snapshot, or where the component's output does not depend on that state.
+</Warning>
+
+### Selective silencing alongside a live subscription
+
+You can combine a live subscription to one slice with a silent read of another. The component re-renders only on changes to the live slice:
+
+```jsx
+const store = createStore({ count: 0, config: { step: 1 } })
+
+function SteppedCounter() {
+  // Re-renders when `count` changes
+  const [count, setState] = useStore(store, (s) => s.count)
+
+  // Never re-renders due to `config` changes
+  const [config] = useStore(store, (s) => s.config, true)
+
+  const increment = () => {
+    setState((s) => ({ ...s, count: s.count + config.step }))
+  }
+
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={increment}>+{config.step}</button>
+    </div>
+  )
+}
+```
+
+## Comparison: standard vs silect
+
+| | Standard `useStore` | Silect `useStore` |
+| --- | --- | --- |
+| Re-renders on state change | Yes | No |
+| State is current on every render | Yes | No — captured at mount |
+| `setState` updates the store | Yes | Yes |
+| Other subscribers are notified | Yes | Yes |
+| Selector support | Yes | Yes |
+
+## Quick reference
+
+<CodeGroup>
+
+```jsx Full store, silect (null selector)
+const [state, setState] = useStore(store, null)
+```
+
+```jsx Specific slice, silect (third argument)
+const [count, setState] = useStore(store, (s) => s.count, true)
+```
+
+```jsx Standard subscription (re-renders enabled)
+const [count, setState] = useStore(store, (s) => s.count)
+```
+
+</CodeGroup>
+
+## Next steps
+
+<Columns cols={2}>
+  <Card title="useStore hook" icon="hook" href="/react/use-store">
+    Full reference for selectors, setState, and TypeScript typing.
+  </Card>
+  <Card title="Getting started" icon="rocket" href="/react/getting-started">
+    Set up Killa with React from scratch.
+  </Card>
+</Columns>

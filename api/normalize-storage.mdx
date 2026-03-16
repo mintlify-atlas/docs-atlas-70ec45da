@@ -1,0 +1,149 @@
+---
+title: 'normalizeStorage'
+description: 'Wraps a storage initializer with error handling, serialization, and optional Base64 encryption.'
+keywords: ['normalizeStorage', 'storage', 'persist', 'localStorage', 'sessionStorage', 'AsyncStorage', 'encryption']
+---
+
+`normalizeStorage` wraps a storage factory function with safe initialization, JSON serialization/deserialization, and optional Base64 encoding. It returns `null` if the storage is unavailable or throws during initialization.
+
+## Import
+
+```typescript
+import { normalizeStorage } from 'killa/persist'
+```
+
+## Signature
+
+```typescript
+function normalizeStorage<T>(
+  initializerStorage: () => CustomStorage<T>,
+  options?: { encrypted?: boolean }
+): CustomStorage<T> | null
+```
+
+## Parameters
+
+<ParamField path="initializerStorage" type="() => CustomStorage<T>" required>
+  A factory function that returns a `CustomStorage<T>` object. It is called immediately inside a `try/catch`.
+
+  If the factory throws or returns a falsy value, `normalizeStorage` returns `null` without propagating the error.
+
+  This is the primary mechanism for safely accessing browser APIs like `localStorage` and `sessionStorage` in environments where they may be blocked (e.g., private browsing, SSR, React Native).
+</ParamField>
+
+<ParamField path="options.encrypted" type="boolean" default="false">
+  When `true`, both the storage key and the serialized value are encoded with `btoa` before writing, and decoded with `atob` before reading.
+
+  <Warning>
+    This uses Base64 encoding (not cryptographic encryption). It obfuscates storage contents against casual inspection but does not provide security against a determined reader.
+  </Warning>
+</ParamField>
+
+## Return value
+
+<ResponseField name="return value" type="CustomStorage<T> | null">
+  - A normalized `CustomStorage<T>` object that wraps the underlying storage with serialization (and optionally encoding).
+  - `null` if the `initializerStorage` factory throws or returns a falsy value.
+</ResponseField>
+
+## What it does
+
+`normalizeStorage` produces a `CustomStorage<T>` wrapper that applies the following transformations on top of the underlying storage:
+
+| Operation | Without encryption | With encryption (`encrypted: true`) |
+| --- | --- | --- |
+| **Key** | Used as-is | Encoded with `btoa` |
+| **Write value** | JSON-serialized | JSON-serialized, then `btoa`-encoded |
+| **Read value** | JSON-deserialized | `atob`-decoded, then JSON-deserialized |
+| **Remove key** | Used as-is | Encoded with `btoa` |
+
+## Examples
+
+### `sessionStorage`
+
+```typescript
+import { createStore } from 'killa'
+import { persist, normalizeStorage } from 'killa/persist'
+
+const sessionStore = createStore(
+  { token: null },
+  {
+    use: [
+      persist({
+        name: 'session',
+        storage: normalizeStorage(() => window.sessionStorage),
+      })
+    ]
+  }
+)
+```
+
+### `localStorage` with encryption
+
+```typescript
+import { normalizeStorage } from 'killa/persist'
+
+const encryptedStorage = normalizeStorage(
+  () => window.localStorage,
+  { encrypted: true }
+)
+
+// encryptedStorage is null if localStorage is unavailable
+if (encryptedStorage) {
+  encryptedStorage.setItem('key', { secret: 'value' })
+  // Written to localStorage as btoa(JSON.stringify({ secret: 'value' }))
+}
+```
+
+### React Native with `AsyncStorage`
+
+<Note>
+  React Native's `AsyncStorage` has an async API (`getItem` returns a `Promise`). To use it with Killa's synchronous `CustomStorage<T>` interface you need a synchronous adapter, or a storage solution with a synchronous API such as `react-native-mmkv`.
+</Note>
+
+```typescript
+import { normalizeStorage } from 'killa/persist'
+import { MMKV } from 'react-native-mmkv'
+
+const mmkv = new MMKV()
+
+const rnStorage = normalizeStorage(() => ({
+  getItem: (name) => {
+    const value = mmkv.getString(name)
+    return value ? JSON.parse(value) : null
+  },
+  setItem: (name, value) => {
+    mmkv.set(name, JSON.stringify(value))
+  },
+  removeItem: (name) => {
+    mmkv.delete(name)
+  },
+}))
+```
+
+### Handling unavailable storage
+
+`normalizeStorage` returns `null` when storage is inaccessible. The `persist` middleware treats a `null` storage as a configuration error and logs a warning without crashing.
+
+```typescript
+import { normalizeStorage } from 'killa/persist'
+
+// In an SSR environment, window is undefined — this returns null safely
+const storage = normalizeStorage(() => window.localStorage)
+
+console.log(storage) // null on the server
+```
+
+## `CustomStorage<T>` interface
+
+The interface that `normalizeStorage` both accepts (from the underlying storage) and returns:
+
+```typescript
+interface CustomStorage<T> {
+  getItem: (name: string) => T | null
+  setItem: (name: string, value: unknown) => void
+  removeItem: (name: string) => void
+}
+```
+
+See [`persist`](/api/persist) for full documentation of the `CustomStorage<T>` interface and the `persist` middleware.

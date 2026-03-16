@@ -1,0 +1,137 @@
+---
+title: "Installation"
+description: "Install Killa via a package manager or load it directly in the browser from a CDN."
+keywords: ["killa", "install", "npm", "yarn", "pnpm", "cdn", "unpkg", "jsdelivr"]
+---
+
+## Package manager
+
+Install Killa using your preferred package manager. Node.js >= 12 is required.
+
+<CodeGroup>
+
+```bash npm
+npm install killa
+```
+
+```bash yarn
+yarn add killa
+```
+
+```bash pnpm
+pnpm add killa
+```
+
+</CodeGroup>
+
+## CDN / browser
+
+You can use Killa directly in the browser without a build step. Two UMD bundles are available: the core library and the middlewares bundle.
+
+### Core library
+
+The core bundle exposes `window.killa`, which includes `createStore`.
+
+<CodeGroup>
+
+```html unpkg
+<script src="https://unpkg.com/killa@1.10.0/dist/umd/killa.min.js"></script>
+<script>
+  const { createStore } = window.killa
+  const store = createStore({ counter: 0 })
+</script>
+```
+
+```html jsDelivr
+<script src="https://cdn.jsdelivr.net/npm/killa@1.10.0/dist/umd/killa.min.js"></script>
+<script>
+  const { createStore } = window.killa
+  const store = createStore({ counter: 0 })
+</script>
+```
+
+</CodeGroup>
+
+### Middlewares bundle
+
+The middlewares bundle exposes `window.killaMiddlewares`, which includes `persist` and `normalizeStorage`.
+
+<CodeGroup>
+
+```html unpkg
+<script src="https://unpkg.com/killa@1.10.0/dist/umd/killaMiddlewares.min.js"></script>
+<script>
+  const { persist, normalizeStorage } = window.killaMiddlewares
+</script>
+```
+
+```html jsDelivr
+<script src="https://cdn.jsdelivr.net/npm/killa@1.10.0/dist/umd/killaMiddlewares.min.js"></script>
+<script>
+  const { persist, normalizeStorage } = window.killaMiddlewares
+</script>
+```
+
+</CodeGroup>
+
+<Tip>
+  To lock to a specific version in production, replace `1.10.0` with the version you want. You can find all published versions on [npm](https://www.npmjs.com/package/killa?activeTab=versions).
+</Tip>
+
+## Package exports
+
+Killa ships multiple entry points so you only import what you need.
+
+| Import path | What it exports |
+|---|---|
+| `killa` | `createStore` (main entry point) |
+| `killa/core` | `createStore` and TypeScript types (`Store`, `Options`, `Selector`, `Subscriber`) |
+| `killa/react` | `useStore` hook for React |
+| `killa/persist` | `persist` middleware and `normalizeStorage` helper |
+| `killa/deep-equals` | Deep equality utility used internally |
+| `killa/helpers` | Internal helpers |
+| `killa/constants` | Internal constants |
+
+Each entry point ships both ESM and CJS builds with TypeScript declaration files.
+
+<Note>
+  `killa/deep-equals`, `killa/helpers`, and `killa/constants` are internal utilities. You rarely need to import them directly unless you are building custom middleware or tooling on top of Killa.
+</Note>
+
+## Peer dependencies
+
+The core `killa` package has no required peer dependencies and works in any JavaScript environment.
+
+If you are using **`killa/react`**, the following peer dependencies are required:
+
+| Package | Version |
+|---|---|
+| `react` | `>= 18.0.0` |
+| `use-sync-external-store` | `>= 1.2.0` |
+
+Install them if they are not already in your project:
+
+<CodeGroup>
+
+```bash npm
+npm install react react-dom use-sync-external-store
+```
+
+```bash yarn
+yarn add react react-dom use-sync-external-store
+```
+
+```bash pnpm
+pnpm add react react-dom use-sync-external-store
+```
+
+</CodeGroup>
+
+<Info>
+  `use-sync-external-store` is a React 18 compatibility shim. If your project already uses React 18 or later, it is included transitively — but it is still best practice to list it as an explicit dependency.
+</Info>
+
+## Requirements
+
+- **Node.js** >= 12
+- **React** >= 18.0.0 (only for `killa/react`)

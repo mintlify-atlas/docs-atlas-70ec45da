@@ -1,0 +1,136 @@
+---
+title: "Getting started with vanilla JS"
+description: "Create your first Killa store, read state, and understand the immutable state model."
+keywords: ["killa", "vanilla", "createStore", "getState", "immutable state"]
+---
+
+Killa stores work independently of any framework. You can use them in any JavaScript or TypeScript project — browser, Node.js, or server-side rendering environments.
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm install killa
+```
+
+```bash yarn
+yarn add killa
+```
+
+```bash pnpm
+pnpm add killa
+```
+
+</CodeGroup>
+
+To use Killa directly in a browser without a build step, load the UMD bundle from a CDN:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/killa@1.10.0/dist/umd/killa.min.js"></script>
+```
+
+The bundle exposes `window.killa`. All store methods are available from that global.
+
+## Creating a store
+
+Import `createStore` and pass it a plain object describing your initial state:
+
+```javascript
+import { createStore } from 'killa'
+// CommonJS: const { createStore } = require('killa')
+
+const store = createStore({ counter: 0 })
+```
+
+`createStore` returns a frozen store object with methods for reading, updating, and subscribing to state.
+
+<Note>
+  The `initializer` you pass to `createStore` must be a plain object (or an initializer function — see below). Passing a non-object throws `"Store must be an object."`
+</Note>
+
+## Reading state
+
+Call `getState()` to retrieve the current state:
+
+```javascript
+const store = createStore({ counter: 0 })
+
+store.getState() // { counter: 0 }
+```
+
+`getState()` always returns a **deep clone** of the internal state (using `just-clone`). Mutating the returned object has no effect on the store.
+
+```javascript
+const state = store.getState()
+state.counter = 99 // does not affect the store
+
+store.getState().counter // still 0
+```
+
+## The immutable state model
+
+Killa enforces immutability internally. You cannot change state by reference — all updates must go through `setState()`. Every call to `getState()` returns a fresh clone, so each snapshot is independent.
+
+This design makes it safe to store references to state snapshots without worrying about them changing underneath you:
+
+```javascript
+const store = createStore({ counter: 0 })
+
+const snapshot = store.getState() // { counter: 0 }
+
+store.setState(() => ({ counter: 1 }))
+
+snapshot.counter        // 0 — unchanged
+store.getState().counter // 1
+```
+
+## Initialization patterns
+
+There are two ways to initialize a store.
+
+### Plain object
+
+Pass an object literal directly. This is the simplest form and is appropriate when state is data-only with no embedded logic:
+
+```javascript
+const store = createStore({
+  counter: 0,
+  filter: '',
+  tags: []
+})
+```
+
+### Initializer function
+
+Pass a function that receives `get` and `set`. Use this pattern when you want to embed update logic — actions — directly inside the store state:
+
+```javascript
+const store = createStore((get, set) => ({
+  count: 1,
+  inc: () => set(() => ({ count: get().count + 1 })),
+  getCount: () => get().count
+}))
+
+store.getState().inc()      // increments count to 2
+store.getState().getCount() // 2
+```
+
+The `get` parameter is `store.getState` and `set` is `store.setState`. See [Internal actions](/vanilla/actions) for a full guide on this pattern.
+
+## Next steps
+
+<Columns cols={2}>
+  <Card title="State management" icon="database" href="/vanilla/state-management">
+    Learn how to update, merge, reset, and force-replace state.
+  </Card>
+  <Card title="Subscriptions" icon="bell" href="/vanilla/subscriptions">
+    React to state changes with global and selector-based subscribers.
+  </Card>
+  <Card title="Internal actions" icon="bolt" href="/vanilla/actions">
+    Embed methods directly in your store using the initializer function.
+  </Card>
+  <Card title="API reference" icon="book" href="/api/create-store">
+    Full reference for `createStore` and its options.
+  </Card>
+</Columns>

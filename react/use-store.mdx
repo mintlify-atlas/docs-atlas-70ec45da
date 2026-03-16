@@ -1,0 +1,211 @@
+---
+title: "useStore hook"
+description: "Full reference for the useStore hook — selectors, fine-grained re-renders, setState, and TypeScript typing."
+keywords: ["killa", "useStore", "react", "selector", "setState", "silect", "re-renders"]
+---
+
+`useStore` is the primary React hook for subscribing to a Killa store. It returns the selected state and the store's `setState` function as a tuple.
+
+## Signature
+
+```typescript
+useStore(
+  store: Store<T>,
+  selector?: ((state: T) => U) | null,
+  silect?: boolean
+): [U, Store<T>['setState']]
+```
+
+| Parameter  | Type                           | Default            | Description                                                                 |
+| ---------- | ------------------------------ | ------------------ | --------------------------------------------------------------------------- |
+| `store`    | `Store<T>`                     | —                  | A store created with `createStore`. Passing an invalid value throws.        |
+| `selector` | `(state: T) => U` \| `null`    | full-store selector | A function that extracts a slice of state. Pass `null` to get the full store in silect mode. |
+| `silect`   | `boolean`                      | `false`            | When `true`, the component reads state at mount and never re-renders on changes. |
+
+**Returns** `[selectedState, setState]`
+
+- `selectedState` — the value returned by your selector (or the full state if no selector is provided).
+- `setState` — identical to `store.setState`. Accepts an updater function `(state: T) => Partial<T>`.
+
+<Note>
+  Internally, `useStore` uses `useSyncExternalStoreWithSelector` from `use-sync-external-store` and compares selected values with a deep-equality check. Re-renders are skipped when the selected value has not changed.
+</Note>
+
+## Basic usage
+
+Pass a store and a selector. The component subscribes to the slice of state the selector returns and re-renders only when that slice changes.
+
+```jsx
+import { createStore } from 'killa'
+import { useStore } from 'killa/react'
+
+const store = createStore({ count: 0, filter: '' })
+
+function Counter() {
+  const [count, setState] = useStore(store, (s) => s.count)
+
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={() => setState((s) => ({ ...s, count: s.count + 1 }))}>
+        +1
+      </button>
+    </div>
+  )
+}
+```
+
+Changing `filter` in the store does not cause `Counter` to re-render, because the selector only reads `s.count`.
+
+## Selector-controlled re-renders
+
+The selector function is the primary tool for fine-grained subscription control. Killa uses deep equality to compare the previous and next selector output. A re-render is triggered only when the comparison finds a difference.
+
+### Single value
+
+Returning a primitive narrows the subscription to a single field:
+
+```jsx
+const [count, setState] = useStore(store, (s) => s.count)
+// Re-renders only when `count` changes
+```
+
+### Multiple values via object
+
+Return an object from the selector to subscribe to several fields at once. Killa deep-compares the returned object, so the component re-renders only when at least one of the included fields changes:
+
+```jsx
+const store = createStore({ counter: 0, filter: '', type: '' })
+
+function FilteredCounter() {
+  const [state, setState] = useStore(store, (s) => ({
+    counter: s.counter,
+    filter: s.filter
+  }))
+
+  // Re-renders when `counter` or `filter` changes.
+  // Changes to `type` do not trigger a re-render.
+
+  return (
+    <div>
+      <p>Counter: {state.counter}</p>
+      <p>Filter: {state.filter}</p>
+    </div>
+  )
+}
+```
+
+<Tip>
+  Returning only the fields your component actually renders is the easiest way to avoid unnecessary re-renders as the store grows.
+</Tip>
+
+### Derived values
+
+The selector can compute derived values. The component re-renders only when the derived output changes:
+
+```jsx
+const [isPositive, setState] = useStore(
+  store,
+  (s) => s.count > 0
+)
+// Re-renders only when the boolean flips, not on every count change
+```
+
+## setState
+
+The second element of the tuple is `store.setState` — the exact same reference as calling `store.setState` directly. It accepts an updater function that receives the current state and must return the new (or partial) state:
+
+```jsx
+const [state, setState] = useStore(store, (s) => ({
+  count: s.count,
+  filter: s.filter
+}))
+
+// Merge a partial update
+setState((s) => ({ ...s, count: s.count + 1 }))
+
+// Update multiple keys at once
+setState((s) => ({ ...s, count: 0, filter: '' }))
+```
+
+Calling `setState` updates the store, notifies all subscribers, and causes any component with a relevant selector to re-render.
+
+<Note>
+  `setState` is stable across renders — it is the same function reference every time. You do not need to include it in `useEffect` or `useCallback` dependency arrays.
+</Note>
+
+## Full-store selector
+
+Omitting the selector (or passing the default) subscribes the component to the entire store. The component re-renders on any state change:
+
+```jsx
+// Subscribes to all state changes
+const [state, setState] = useStore(store)
+```
+
+Passing `null` as the selector is a special case that also returns the full store, but enables silect mode automatically — the component will not re-render when state changes. See [Silent states](/react/silent-states).
+
+```jsx
+// Full store, no re-renders (silect mode)
+const [state, setState] = useStore(store, null)
+```
+
+## TypeScript
+
+`useStore` is fully generic. TypeScript infers the state type `T` from the store and the selected type `U` from the selector's return value.
+
+```typescript
+import { createStore } from 'killa'
+import { useStore } from 'killa/react'
+
+interface AppState {
+  count: number
+  filter: string
+  tags: string[]
+}
+
+const store = createStore<AppState>({ count: 0, filter: '', tags: [] })
+
+function Counter() {
+  // `state` is inferred as `{ count: number; filter: string }`
+  const [state, setState] = useStore(store, (s) => ({
+    count: s.count,
+    filter: s.filter
+  }))
+
+  // `setState` is typed as `Store<AppState>['setState']`
+  setState((s) => ({ ...s, count: s.count + 1 }))
+
+  return <p>{state.count}</p>
+}
+```
+
+You can also annotate the selector explicitly if needed:
+
+```typescript
+const [count, setState] = useStore<AppState, number>(
+  store,
+  (s) => s.count
+)
+```
+
+## Error handling
+
+`useStore` validates the `store` argument. If you pass a value that was not created by `createStore`, the hook throws:
+
+```
+Error: Provide a valid store for useStore.
+```
+
+This prevents silent failures when a store import is missing or incorrectly initialised.
+
+## Next steps
+
+<Columns cols={2}>
+  <Card title="Silent states" icon="eye-off" href="/react/silent-states">
+    Use silect mode to read state without subscribing to re-renders.
+  </Card>
+  <Card title="Getting started" icon="rocket" href="/react/getting-started">
+    Set up Killa with React from scratch.
+  </Card>
+</Columns>
