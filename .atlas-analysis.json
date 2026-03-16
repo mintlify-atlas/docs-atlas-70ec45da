@@ -1,0 +1,102 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Killa",
+  "projectDescription": "A small and lightweight state management library for vanilla JavaScript and React, inspired by Zustand and SWR.",
+  "theme": "mint",
+  "primaryColor": "#848c8e",
+  "lightColor": "#11161e",
+  "darkColor": "#cfd0d2",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Vanilla",
+            "pages": [
+              "vanilla/getting-started",
+              "vanilla/state-management",
+              "vanilla/subscriptions",
+              "vanilla/actions"
+            ]
+          },
+          {
+            "group": "React",
+            "pages": [
+              "react/getting-started",
+              "react/use-store",
+              "react/silent-states"
+            ]
+          },
+          {
+            "group": "Middleware",
+            "pages": [
+              "middleware/overview",
+              "middleware/persist"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/create-store",
+              "api/store-methods"
+            ]
+          },
+          {
+            "group": "React",
+            "pages": [
+              "api/use-store"
+            ]
+          },
+          {
+            "group": "Middleware",
+            "pages": [
+              "api/persist",
+              "api/normalize-storage"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Lightweight state management with zero boilerplate",
+    "Works with both vanilla JavaScript and React",
+    "Selector-based subscriptions for fine-grained reactivity",
+    "Persist middleware with localStorage/sessionStorage support and encryption",
+    "Auto-revalidate on window focus",
+    "Immutable internal state with deep equality checks",
+    "Custom middleware support",
+    "React 18 useSyncExternalStore integration"
+  ],
+  "publicApiSurface": [
+    "createStore(initializer, options)",
+    "store.getState()",
+    "store.setState(fn, force?)",
+    "store.subscribe(subscriber, selector?)",
+    "store.resetState(state?)",
+    "store.destroy()",
+    "useStore(store, selector?, silect?)",
+    "persist(config)",
+    "normalizeStorage(initializerStorage, options?)",
+    "Store<T>",
+    "Options<T>",
+    "Selector<T, U>",
+    "Subscriber<T, U>",
+    "PersistConfig<T>",
+    "CustomStorage<T>"
+  ]
+}
